@@ -1,0 +1,91 @@
+{
+  "criteria": {
+    "stiffness_relative_error": 0.15,
+    "signed_peak_relative_error": 0.1,
+    "envelope_NRMSE": 0.1,
+    "observed_max_rotation_relative_error": 0.1,
+    "rotation_digitization_uncertainty_rad": 0.0002712261592206046,
+    "order_free_cloud_RMS": 0.1,
+    "tail_endpoint_retention_abs_error": 0.1,
+    "numerical_energy_work_ratio": 0.01,
+    "sensitivity_curve_NRMSE": 0.02,
+    "sensitivity_signed_peak_relative_error": 0.02,
+    "sensitivity_tail_ratio_abs_difference": 0.02
+  },
+  "candidates": [
+    {
+      "name": "CAP0675",
+      "parameters": {
+        "cap": 0.0675
+      },
+      "cyclic": {}
+    },
+    {
+      "name": "RES025",
+      "parameters": {
+        "residual_ratio": 0.25
+      },
+      "cyclic": {}
+    },
+    {
+      "name": "PINCH080",
+      "parameters": {},
+      "cyclic": {
+        "pinchX": 0.8,
+        "pinchY": 0.8
+      }
+    },
+    {
+      "name": "BETA020",
+      "parameters": {},
+      "cyclic": {
+        "beta": 0.2
+      }
+    },
+    {
+      "name": "CAP_PINCH_BETA",
+      "parameters": {
+        "cap": 0.0675
+      },
+      "cyclic": {
+        "pinchX": 0.8,
+        "pinchY": 0.8,
+        "beta": 0.2
+      }
+    },
+    {
+      "name": "CAP_RES_PINCH_BETA",
+      "parameters": {
+        "cap": 0.0675,
+        "residual_ratio": 0.25
+      },
+      "cyclic": {
+        "pinchX": 0.8,
+        "pinchY": 0.8,
+        "beta": 0.2
+      }
+    }
+  ],
+  "max_native_runs": 8,
+  "baseline_reruns": 0,
+  "optimization": "Deterministic constrained finite set; J2 ranking only among full observational passes",
+  "fixed": {
+    "E_MPa": 200000,
+    "Fy_MPa": 352,
+    "Lp_mm": 100,
+    "mesh": 64,
+    "step_mm": 1,
+    "peak_ratio": 1.9,
+    "G_N_per_mm": 3086.4729847291514
+  },
+  "rationale": {
+    "cap": ".0675 midpoint of already screened .06-.075: later observed peak, with envelope tradeoff explicitly retained",
+    "residual_ratio": ".25 effective-law sensitivity only; not measured residual coupon stress. At fixed G, residual strain knot is recomputed by original mapping",
+    "pinchX_pinchY": ".8 existing preregistered range; branch-shape sensitivity, not proof of crack closure",
+    "beta": ".2 existing preregistered range; unloading sensitivity",
+    "damage": "No further increase: four actual damage screens worsen envelope and fail final drop",
+    "bounds": "Effective member law only; actual Fu unknown; peak_ratio=1.9 is not asserted as measured steel Fu/Fy"
+  },
+  "history": "PARTIAL: all damage/history claims conditional; no reset",
+  "stop": "Six screens then, only if eligible, two numerical sensitivity checks; no adaptive optimization, no threshold changes."
+}
