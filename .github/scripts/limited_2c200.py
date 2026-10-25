@@ -10,7 +10,26 @@ PAYLOAD_SHA256='b1d39b5fe65698a625c5be7095d629744cc043a4fe59aa5fce96bec40d3def87
 def require(ok,message):
     if not ok:raise RuntimeError(message)
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
-def dump(p,value):p.write_text(json.dumps(value,indent=2,ensure_ascii=False,allow_nan=False),encoding='utf-8')
+def _json_standard_types(value):
+    """Convert nested NumPy values without hiding unsupported/nonfinite data."""
+    # Keep report-only modes usable even if dependency installation failed.
+    try:
+        import numpy as np
+    except ImportError:
+        np=None
+    def convert(item):
+        if np is not None:
+            if isinstance(item,np.bool_):return bool(item)
+            if isinstance(item,np.integer):return int(item)
+            if isinstance(item,np.floating):return float(item)
+            if isinstance(item,np.ndarray):return convert(item.tolist())
+        if isinstance(item,dict):return {convert(k):convert(v) for k,v in item.items()}
+        if isinstance(item,(list,tuple)):return [convert(v) for v in item]
+        # json.dumps still rejects unsupported types; no string fallback.
+        return item
+    return convert(value)
+
+def dump(p,value):p.write_text(json.dumps(_json_standard_types(value),indent=2,ensure_ascii=False,allow_nan=False),encoding='utf-8')
 def load(p):return json.loads(p.read_text(encoding='utf-8-sig'))
 def read(p):
     with p.open(encoding='utf-8-sig',newline='') as f:return list(csv.DictReader(f))
