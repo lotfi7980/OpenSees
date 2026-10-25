@@ -1,0 +1,60 @@
+
+name: Fixed HystereticSM Ubuntu Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ubuntu:
+    name: Build fixed OpenSeesPy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout verified OpenSees commit
+        uses: actions/checkout@v4
+        with:
+          repository: OpenSees/OpenSees
+          ref: a3ece539b412d760cfba400de0a17a3986a687e5
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify source revision
+        run: |
+          test "$(git rev-parse HEAD)" = "a3ece539b412d760cfba400de0a17a3986a687e5"
+          git rev-parse HEAD
+
+      - name: Install Conan
+        run: |
+          python -m pip install "conan>=2,<3"
+          conan profile detect --force
+
+      - name: Configure and build OpenSeesPy
+        run: |
+          export CMAKE_POLICY_VERSION_MINIMUM=3.5
+          conan install . --build=missing
+          cmake -S . -B build/Release \
+            -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/Release --target OpenSeesPy -j4
+          mv build/Release/OpenSeesPy.so build/Release/opensees.so
+
+      - name: Basic import verification
+        run: |
+          PYTHONPATH="$PWD/build/Release" python -c "import opensees; print('OpenSeesPy import PASS')"
+          sha256sum build/Release/opensees.so > build/Release/SHA256.txt
+
+      - name: Save compiled module
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSeesPy-Fixed-Ubuntu
+          path: |
+            build/Release/opensees.so
+            build/Release/SHA256.txt
