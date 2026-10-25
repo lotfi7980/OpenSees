@@ -1,0 +1,81 @@
+# Upload to .github/workflows/chao_2c200_limited.yml
+# limited_2c200.py -> .github/scripts/limited_2c200.py
+# CHAO_2C200_1_LIMITED_INPUTS.zip -> research_inputs/CHAO_2C200_1_LIMITED_INPUTS.zip
+name: Chao 2C200-1 limited Fiber calibration
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  member-only:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      CAL_OUT: ${{ github.workspace }}/limited-results
+      PASSED_GATE: ${{ github.workspace }}/passed-gate-artifact
+      PYTHONUNBUFFERED: "1"
+      MPLBACKEND: Agg
+    steps:
+      - name: Checkout independent scripts and frozen inputs
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Match passed binary interpreter
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.17"
+      - name: Install analysis Python dependencies only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CAL_OUT"
+          python -m pip install 'numpy==1.26.4' 'matplotlib==3.9.2' 2>&1 | tee "$CAL_OUT/dependencies.log"
+      - name: Retrieve existing passed native binary and its test evidence - NO BUILD
+        uses: actions/download-artifact@v4
+        with:
+          repository: lotfi7980/OpenSees
+          run-id: 40188751762
+          name: HystereticSM-Fixed-Artifact-Gate-40188751762-1
+          github-token: ${{ github.token }}
+          path: ${{ env.PASSED_GATE }}
+      - name: Verify and freeze payload before any member execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/limited_2c200.py prepare \
+            --payload research_inputs/CHAO_2C200_1_LIMITED_INPUTS.zip --out "$CAL_OUT" \
+            2>&1 | tee "$CAL_OUT/preparation.log"
+      - name: Run reference, bounded candidates and predefined verification only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/limited_2c200.py run \
+            --binary-root "$PASSED_GATE" --out "$CAL_OUT" \
+            2>&1 | tee "$CAL_OUT/member-console.log"
+      - name: Write Persian report and explicit decision even after failure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CAL_OUT"
+          python .github/scripts/limited_2c200.py summarize --out "$CAL_OUT"
+          cat "$CAL_OUT/REPORT_FA.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Save all member histories, comparisons, locked plan and code
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CHAO-2C200-1-Limited-Calibration-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30
+          path: |
+            ${{ env.CAL_OUT }}/
+            .github/scripts/limited_2c200.py
+            .github/workflows/chao_2c200_limited.yml
+            research_inputs/CHAO_2C200_1_LIMITED_INPUTS.zip
+      - name: No hidden retry or additional optimization after BLOCK
+        if: always()
+        shell: bash
+        run: |
+          python -c 'import json,os,pathlib; r=json.loads((pathlib.Path(os.environ["CAL_OUT"])/"RESULT.json").read_text()); print(r["decision"]); raise SystemExit(0 if r["decision"]=="CALIBRATION_PASS" else 1)'
