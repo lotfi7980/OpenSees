@@ -1,0 +1,49 @@
+name: Chao bounded remaining mechanisms
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  bounded-screen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.17'
+      - run: python -m pip install numpy==1.26.4 matplotlib==3.9.2
+      - uses: actions/download-artifact@v4
+        with:
+          repository: lotfi7980/OpenSees
+          run-id: 40188751762
+          name: HystereticSM-Fixed-Artifact-Gate-40188751762-1
+          github-token: ${{ github.token }}
+          path: passed-native-gate
+      - name: Six candidates; at most two verification paths
+        run: python research_inputs/chao_bounded/bounded_runner.py --binary-root passed-native-gate --out bounded-results
+      - name: Record execution and scientific status separately
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          out = Path('bounded-results')
+          out.mkdir(exist_ok=True)
+          path = out / 'RESULT.json'
+          if not path.exists():
+              path.write_text(json.dumps(dict(computational_status='WORKFLOW_PREFLIGHT_FAILED', scientific_status='INCONCLUSIVE', new_member_runs=0, message='Workflow stopped before runner result; inspect failed step logs'), indent=2), encoding='utf-8')
+          result = json.loads(path.read_text(encoding='utf-8'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as stream:
+              stream.write('وضعیت اجرا: ' + result['computational_status'] + '\n\nوضعیت علمی: ' + result['scientific_status'] + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Chao-Bounded-${{ github.run_id }}-${{ github.run_attempt }}
+          path: bounded-results/
+          retention-days: 30
