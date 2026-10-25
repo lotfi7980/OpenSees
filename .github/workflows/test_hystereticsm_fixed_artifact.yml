@@ -1,0 +1,102 @@
+# Upload this file to .github/workflows/test_hystereticsm_fixed_artifact.yml
+# Upload the accompanying Python file to .github/scripts/hystereticsm_artifact_gate.py
+# Actions -> Test fixed HystereticSM artifact -> Run workflow. No OpenSees build.
+name: Test fixed HystereticSM artifact
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  material-gate:
+    name: Existing Linux binary - HystereticSM gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GATE_OUT: ${{ github.workspace }}/gate-results
+      BINARY_ROOT: ${{ github.workspace }}/fixed-binary
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout test scripts only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Match builder Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependency only - never pip install OpenSeesPy
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GATE_OUT"
+          python -m pip install 'numpy==1.26.4' 2>&1 | tee "$GATE_OUT/test-dependency.log"
+
+      - name: Audit producer run, artifact identity, pinned build recipe and source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/hystereticsm_artifact_gate.py audit-run --out "$GATE_OUT" \
+            2>&1 | tee "$GATE_OUT/provenance.log"
+
+      - name: Download exact existing artifact - no rebuild
+        uses: actions/download-artifact@v4
+        with:
+          name: OpenSeesPy-Fixed-Ubuntu
+          repository: lotfi7980/OpenSees
+          run-id: 40186529499
+          github-token: ${{ github.token }}
+          path: ${{ env.BINARY_ROOT }}
+
+      - name: Verify producer checksum, ELF dependencies and exact import path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/hystereticsm_artifact_gate.py verify-binary \
+            --binary-root "$BINARY_ROOT" --out "$GATE_OUT" \
+            2>&1 | tee "$GATE_OUT/binary-import.log"
+
+      - name: Run unchanged bounded histories and numerical criteria
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/hystereticsm_artifact_gate.py run \
+            --binary-root "$BINARY_ROOT" --out "$GATE_OUT" \
+            2>&1 | tee "$GATE_OUT/material-console.log"
+
+      - name: Write PASS or BLOCK even if an earlier step failed
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GATE_OUT"
+          python .github/scripts/hystereticsm_artifact_gate.py summarize --out "$GATE_OUT" \
+            --job-status '${{ job.status }}'
+          cat "$GATE_OUT/REPORT_FA.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save numerical output, provenance, binary and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HystereticSM-Fixed-Artifact-Gate-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30
+          path: |
+            ${{ env.GATE_OUT }}/
+            ${{ env.BINARY_ROOT }}/
+            .github/scripts/hystereticsm_artifact_gate.py
+            .github/workflows/test_hystereticsm_fixed_artifact.yml
+
+      - name: Fail closed unless all required material controls passed
+        if: always()
+        shell: bash
+        run: |
+          python -c 'import json,os,pathlib; r=json.loads((pathlib.Path(os.environ["GATE_OUT"])/"RESULT.json").read_text()); assert r["binary_gate"]=="PASS" and r["material_gate"]=="PASS", r'
