@@ -1,0 +1,75 @@
+# -> .github/workflows/p190_damage_sensitivity.yml
+# p190_damage.py -> .github/scripts/p190_damage.py
+# P190_DAMAGE_INPUTS.zip -> research_inputs/P190_DAMAGE_INPUTS.zip
+name: P190 C060 damage-only sensitivity
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  four-candidate-maximum:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      SENS_OUT: ${{ github.workspace }}/damage-results
+      PASSED_GATE: ${{ github.workspace }}/passed-native-gate
+      PYTHONUNBUFFERED: "1"
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.17"
+      - name: Python dependencies only - no native OpenSees build or installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SENS_OUT"
+          python -m pip install 'numpy==1.26.4' 'matplotlib==3.9.2' 2>&1 | tee "$SENS_OUT/dependencies.log"
+      - name: Retrieve the same already-passed native binary
+        uses: actions/download-artifact@v4
+        with:
+          repository: lotfi7980/OpenSees
+          run-id: 40188751762
+          name: HystereticSM-Fixed-Artifact-Gate-40188751762-1
+          github-token: ${{ github.token }}
+          path: ${{ env.PASSED_GATE }}
+      - name: Freeze four candidates and verify archived baseline - do not rerun it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/p190_damage.py prepare --payload research_inputs/P190_DAMAGE_INPUTS.zip --out "$SENS_OUT" 2>&1 | tee "$SENS_OUT/preparation.log"
+      - name: D1 pair then conditional D2 pair - never more than four new paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/p190_damage.py run --binary-root "$PASSED_GATE" --out "$SENS_OUT" 2>&1 | tee "$SENS_OUT/analysis.log"
+      - name: Persian report and explicit scientific decision
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SENS_OUT"
+          python .github/scripts/p190_damage.py summarize --out "$SENS_OUT"
+          cat "$SENS_OUT/REPORT_FA.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Save before-after tables, loops, late-cycle plots and full histories
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P190-C060-Damage-Sensitivity-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 30
+          path: |
+            ${{ env.SENS_OUT }}/
+            .github/scripts/p190_damage.py
+            .github/workflows/p190_damage_sensitivity.yml
+            research_inputs/P190_DAMAGE_INPUTS.zip
+      - name: Keep full-criteria rejection visible - no retries or extra candidates
+        if: always()
+        shell: bash
+        run: |
+          python -c 'import json,os,pathlib; r=json.loads((pathlib.Path(os.environ["SENS_OUT"])/"RESULT.json").read_text()); print(r["decision"]); raise SystemExit(0 if r["decision"]=="CONTINUE_SAME_MODEL_WITH_CONDITIONAL_SUPPORT" else 1)'
